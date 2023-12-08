@@ -16,8 +16,151 @@
 	<body>
 		<div class="reveal">
 			<div class="slides">
-				<section>Slide 1</section>
-				<section>Slide 2</section>
+				<section>
+				<h1>PyQGIS</h1>
+				<p>Подготовил Иван Гамма</p>
+				</section>
+				<section>
+				<p>
+				QGIS основан на Qt (С++ тулкит для создания приложений). С QGIS 0.9 введена поддержка написания сценариев на Python, за счет его широкого применения в других сферах, в том числе и в создании приложений - PyQt.
+				</p>
+				<p>
+				Можно писать команды в консоль, писать скрипты и создавать модули
+				</p>
+				</section>
+				<section>
+				<h3>Поставим задачу</h3>
+				<p>Чтобы её поставить, см. третью часть задания по ArcPy</p>
+				<p>Будем это делать в PyQGIS (кринж)</p>
+				</section>
+				<section>
+				<h4>Дано:</h4>
+				<p><img data-src="sample.png" height="400" width="1920"></p>
+				</section>
+				<section data-auto-animate>
+				<h4>Инициализация проекта</h4>
+					<pre>
+						<code data-trim data-noescape data-line-numbers="1-14|28-41|1-14|14-28|1-14" class="py">
+						<script type="text/template">
+							#инициализация проекта в среде PyQGIS
+							project=QgsProject.instance() #проект
+							manager=project.layoutManager() #менеджер макетов
+							layout_name='Layout_NEPro' #укажем название макета, в котором решается задачка
+							layouts=manager.printLayouts() #все макеты
+							#следующая конструкция нужна чтобы при перезапуске удалять макет и переделывать по новой
+							for layout in layouts: 
+								if layout.name()==layout_name:
+									manager.removeLayout(layout)
+							layout=QgsPrintLayout(project) #инициализация макета в проекте
+							layout.setName(layout_name) #ставим имя макета
+							manager.addLayout(layout) #добавить макет в проект
+							ms=QgsMapSettings() 
+						</script>
+						</code>
+					</pre>
+				</section>
+				<section>
+				<h4>Слои проекта</h4>
+					<pre>
+						<code data-trim data-noescape data-line-numbers="1-14|28-41|1-14|14-28|1-14" class="py">
+							<script type="text/template">
+								layers=project.mapLayers().values()
+								print(layers)
+								#dict_values([<QgsVectorLayer: 'Borders' (ogr)>,
+								#<QgsVectorLayer: 'Geod_network' (ogr)>, 
+								#<QgsVectorLayer: 'QB_2009' (ogr)>, 
+								#<QgsRasterLayer: 'Yandex Satellite' (wms)>])
+							</script>
+						</code>
+					</pre>
+				</section>
+				<section>
+				<h4>Скопируем код из практической</h4>
+					<pre>
+						<code data-trim data-noescape data-line-numbers="1-14|28-41|1-14|14-28|1-14" class="py">
+							<script type="text/template">
+								def get_camera_heading(geom):
+									x1, y1 = geom[0]
+									x2, y2 =  geom[1]
+									dx=x2-x1
+									dy=y2-y1
+									r=math.degrees(math.atan(dy/dx))
+									if dx>0 and dy>0:
+										a=180-r
+									elif dx<0 and dy>0:
+										a=180-r
+									elif dx<0 and dy<0:
+										a=180+r
+									elif dx>0 and dy<0:
+										a=360-r
+									return a
+							</script>
+						</code>
+					</pre>
+				</section>
+				<section>
+				<h4>Обратимся к геометрии Border</h4>
+					<pre>
+						<code data-trim data-noescape data-line-numbers="1-14|28-41|1-14|14-28|1-14" class="py">
+							<script type="text/template">
+								for layer in layers:
+								if layer.name()=='Borders':
+									borders=layer
+								ms.setLayers([borders])
+								borders_fet=borders.getFeatures()
+							</script>
+						</code>
+					</pre>
+				</section>
+				<section>
+				<section>
+				<h4>Обход четырехугольников</h4>
+					<pre>
+						<code data-trim data-noescape data-line-numbers="1-14|28-41|1-14|14-28|1-14" class="py">
+							<script type="text/template">
+								page_i=0
+								for border_fet in borders_fet:
+									expr=" \"OBJECTID\" = '{}' ".format(page_i)
+									selection=borders.selectByExpression(expr)
+									bbox=borders.boundingBoxOfSelected()
+									labeltext=f'{border_fet["Id"]}-{border_fet["Sub_ID"]}'
+									border_geom=border_fet.geometry().asMultiPolygon()[0][0]
+									x1, y1 = border_geom[0].x(), border_geom[0].y()
+									x2, y2 = border_geom[1].x(), border_geom[1].y()
+									heading=get_camera_heading(((x1, y1), (x2, y2)))
+									addPageInLayout(layout, heading, page_i, borders, bbox)
+									page_i+=1
+							</script>
+						</code>
+					</pre>
+				<!-- <p>Лайк, если любишь геометрические оболочки, или если хочешь посмотреть что в addPageInLayout</p> -->
+				</section>
+				<section>
+				<h4>addPageInLayout</h4>
+					<pre>
+						<code data-trim data-noescape data-line-numbers="1-14|28-41|1-14|14-28|1-14" class="py">
+							<script type="text/template">
+								def addPageInLayout(layout, heading, page_i, layer, bbox):
+									page=QgsLayoutItemPage(layout)
+									page.setPageSize('A4', QgsLayoutItemPage.Portrait)
+									layout.pageCollection().addPage(page)
+									map = QgsLayoutItemMap(layout)
+									map.setRect(20,20,20,20)
+									ms.setExtent(bbox)
+									map.setExtent(bbox)
+									map.attemptMove(QgsLayoutPoint(20,20,QgsUnitTypes.LayoutMillimeters), page=page_i)
+									map.attemptResize(QgsLayoutSize(170,170,QgsUnitTypes.LayoutMillimeters))
+									map.setScale(5000)
+									map.storeCurrentLayerStyles()
+									map.setKeepLayerSet(True)
+									map.setKeepLayerStyles(True)
+									map.setMapRotation(heading)
+									layout.addLayoutItem(map)
+							</script>
+						</code>
+					</pre>
+				</section>
+				</section>
 			</div>
 		</div>
 
